@@ -54,7 +54,6 @@
             <inertial pos="0 0 0" mass="100.0" diaginertia="0.1 0.1 0.1"/>
             <geom name="ur_stand_ring" type="mesh" mesh="dual_ur_stand_ring" pos="0 0 0" material="grey" conaffinity="1" contype="2"/>
             <body name="dual_ur_stand" pos="0.0 0.0 0.0" euler="0 0 0">
-                <joint name="ur_stand_joint" axis="0 0 1" pos="0 0 0" limited="false" range="-6.28319 6.28319"/>
                 <body name="ur_stand_dummy" pos="0 0 0" euler="0 0 0"></body>
 
                 <inertial pos="0 0 0" mass="20.0" diaginertia="0.25 0.25 0.25"/>
@@ -113,6 +112,14 @@
                                             <geom name="link6_ur5right" type="mesh" mesh="link6" pos="-0.008 0 0" material="silver"/>
                                             
                                             <body name="ur_EE_ur5right" pos="0 0 0" euler="0 0 0">
+                                                <body name="ee_site_body_ur5right" pos="0 0 0.145" euler="0 0 0">
+                                                    <site name="ee_target_frame_ur5right"
+                                                          pos="0 0 0.03"
+                                                          size="0.01"
+                                                          rgba="1 0 0 1"
+                                                          type="sphere"
+                                                          group="1"/>
+                                                </body>
                                                 <body name="robotiq_85_adapter_link_ur5right" pos="0.0 0 0" quat="-0.707105 0 0.707105 0">
                                                     <site name="ft_frame_ur5right" pos="0 0 0" size="0.01 0.01 0.01" rgba="1 0 0 1" type="sphere" group="1" />
                                                     <body name="EE_ur5right" pos="0 0 0.145" quat="0.707105 0 0 -0.707105"></body>
@@ -266,25 +273,32 @@
     </worldbody>
 
     <actuator>
-        <position name="ur_stand_joint_motor" joint="ur_stand_joint"/>
+        <!-- ========== device 0 : base (只有 1 个旋转关节) ========== -->
+        <!-- 配置里 kp=200, kv=20 -->
+<!--        <position name="ur_stand_joint_motor" joint="ur_stand_joint"-->
+<!--                  kp="200" kv="20"/>-->
 
-        <motor name="joint0_motor_ur5right" joint="joint0_ur5right"/>
-        <motor name="joint1_motor_ur5right" joint="joint1_ur5right"/>
-        <motor name="joint2_motor_ur5right" joint="joint2_ur5right"/>
-        <motor name="joint3_motor_ur5right" joint="joint3_ur5right"/>
-        <motor name="joint4_motor_ur5right" joint="joint4_ur5right"/>
-        <motor name="joint5_motor_ur5right" joint="joint5_ur5right"/>
+        <!-- ========== device 1 : ur5right 6 个旋转关节 ========== -->
+        <!-- 使用 arm_osc 参数：kp=20, kv=10 -->
+        <position name="joint0_motor_ur5right" joint="joint0_ur5right" kp="200" kv="10"/>
+        <position name="joint1_motor_ur5right" joint="joint1_ur5right" kp="200" kv="10"/>
+        <position name="joint2_motor_ur5right" joint="joint2_ur5right" kp="200" kv="10"/>
+        <position name="joint3_motor_ur5right" joint="joint3_ur5right" kp="200" kv="10"/>
+        <position name="joint4_motor_ur5right" joint="joint4_ur5right" kp="200" kv="10"/>
+        <position name="joint5_motor_ur5right" joint="joint5_ur5right" kp="200" kv="10"/>
 
-        <motor name='gripper_ur5right' joint='right_outer_knuckle_joint_ur5right' />
+        <!-- ========== device 2 : ur5left 6 个旋转关节 ========== -->
+        <!-- 同样使用 arm_osc 参数：kp=20, kv=10 -->
+        <position name="joint0_motor_ur5left"  joint="joint0_ur5left"  kp="20" kv="10"/>
+        <position name="joint1_motor_ur5left"  joint="joint1_ur5left"  kp="20" kv="10"/>
+        <position name="joint2_motor_ur5left"  joint="joint2_ur5left"  kp="20" kv="10"/>
+        <position name="joint3_motor_ur5left"  joint="joint3_ur5left"  kp="20" kv="10"/>
+        <position name="joint4_motor_ur5left"  joint="joint4_ur5left"  kp="20" kv="10"/>
+        <position name="joint5_motor_ur5left"  joint="joint5_ur5left"  kp="20" kv="10"/>
 
-        <motor name="joint0_motor_ur5left" joint="joint0_ur5left"/>
-        <motor name="joint1_motor_ur5left" joint="joint1_ur5left"/>
-        <motor name="joint2_motor_ur5left" joint="joint2_ur5left"/>
-        <motor name="joint3_motor_ur5left" joint="joint3_ur5left"/>
-        <motor name="joint4_motor_ur5left" joint="joint4_ur5left"/>
-        <motor name="joint5_motor_ur5left" joint="joint5_ur5left"/>
-
-        <motor name="gripper_ur5left" joint='right_outer_knuckle_joint_ur5left' />
+        <!-- ========== 夹爪仍用力矩控制（如需位置伺服再单独换） ========== -->
+        <motor name="gripper_ur5right" joint="right_outer_knuckle_joint_ur5right"/>
+        <motor name="gripper_ur5left"  joint="right_outer_knuckle_joint_ur5left"/>
     </actuator>
 
     <sensor>

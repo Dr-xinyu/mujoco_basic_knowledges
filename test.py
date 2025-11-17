@@ -1,72 +1,195 @@
-"""
-=========================================
-mink + MuJoCo：仅驱动机械臂（position）
-=========================================
-pip install mujoco mink numpy
-"""
+import time
+
 import mujoco
-import mink
+import mujoco.viewer
 import numpy as np
+from loop_rate_limiters import RateLimiter
 
-# ---------- 1. 加载模型 ---------- #
-xml_path = "your_scene.xml"          # 你的完整 MJCF（含桌子/物体）
-model = mujoco.MjModel.from_xml_path(xml_path)
-data  = mujoco.MjData(model)
+import mink
+from scipy.spatial.transform import Rotation as R, Slerp
 
-# ---------- 2. 拿到“机械臂”actuator 索引 ---------- #
-arm_act_names = [f"joint{i}_motor_ur5right" for i in range(6)] + \
-                [f"joint{i}_motor_ur5left"  for i in range(6)]
-arm_act_ids = np.array([mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_ACTUATOR, n)
-                        for n in arm_act_names], dtype=np.int32)
+xml_path = "assets/universal_robots_ur5e/scene.xml"
 
-# ---------- 3. 拿到机械臂关节在 qpos 里的地址 ---------- #
-arm_jnt_names = [f"joint{i}_ur5right" for i in range(6)] + \
-                [f"joint{i}_ur5left"  for i in range(6)]
-arm_jnt_ids = np.array([mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, n)
-                        for n in arm_jnt_names])
-arm_qpos_adr = model.jnt_qposadr[arm_jnt_ids]  # 12 个地址
+end_pose = np.array([0.35, 0, 0.6])
+r_end = np.array([
+    [1, 0, 0],  # X 轴：世界 X
+    [0, -1, 0],  # Y 轴：世界 -Y（保持右手系）
+    [0, 0, -1]  # Z 轴：世界 -Z（朝下）
+])
 
-# ---------- 4. 初始目标 = 当前角度 ---------- #
-q_target_arm = data.qpos[arm_qpos_adr].copy()
 
-# ---------- 5. 配置 IK ---------- #
-site_name = "ur_EE_ur5right"        # 先只跟踪右臂末端，左臂同理
-task = mink.FrameTask(
-    frame_name=site_name,
-    frame_type="site",
-    position_cost=1.0,
-    orientation_cost=1.0,
-)
+def generate_cartesian_trajectory(start_pos, end_pos,
+                                  start_rotation_matrix,
+                                  end_rotation_matrix,
+                                  linear_speed,
+                                  control_dt):
+    displacement = end_pos - start_pos
+    distance = np.linalg.norm(displacement)
+    if distance < 1e-6:
+        return [(start_pos.copy(), start_rotation_matrix.copy())], control_dt
 
-limits = [
-    mink.ConfigurationLimit(model=model),
-    mink.VelocityLimit(np.full(model.nv, 2.0)),  # rad/s
-]
+    total_time = distance / linear_speed
+    num_points = max(2, int(np.ceil(total_time / control_dt)))
+    actual_dt = total_time / (num_points - 1)
 
-dt = model.opt.timestep
+    # 线性插值
+    positions = [start_pos + t * displacement for t in np.linspace(0, 1, num_points)]
 
-# ---------- 6. 主循环 ---------- #
-with mujoco.viewer.launch_passive(model, data) as viewer:
-    target = np.array([0.5, 0.0, 0.3])  # 目标位置
-    while viewer.is_running():
-        # 6.1 更新任务
-        task.set_target(mink.SE3.from_pos_quat(target, [1, 0, 0, 0]))
+    # 旋转的slerp 插值
+    start_rot = R.from_matrix(start_rotation_matrix)
+    end_rot = R.from_matrix(end_rotation_matrix)
 
-        # 6.2 速度 IK（只返回 12 个自由度）
-        dq = mink.solve_ik(
-            configuration=mink.Configuration(model, data),
-            tasks=[task],
-            constraints=limits,
-            dt=dt,
-            solver="quadprog",
-        )[arm_qpos_adr]          # 只取机械臂部分
+    start_q_xyzw = start_rot.as_quat()
+    end_q_xyzw = end_rot.as_quat()
 
-        # 6.3 积分 → 目标角度
-        q_target_arm += dq * dt
+    key_times = [0.0, 1.0]
+    key_rots = R.concatenate([start_q_xyzw, end_q_xyzw])  # 或 from_quat([...])
 
-        # 6.4 ****** 只写机械臂 actuator，其余通道不动 ******
-        data.ctrl[arm_act_ids] = q_target_arm
+    slerp = Slerp(key_times, key_rots)
+    interp_times = np.linspace(0, 1, num_points)
+    interp_rots = slerp(interp_times)
 
-        # 6.5 仿真步进
-        mujoco.mj_step(model, data)
-        viewer.sync()
+    quaternions = []
+    for quat_xyzw in interp_rots.as_quat():  # 每个是 [x, y, z, w]
+        x, y, z, w = quat_xyzw
+        quat_wxyz = np.array([w, x, y, z])
+        quaternions.append(quat_wxyz)
+
+    se3_trajectory = []
+    for pos, quaternion in zip(positions, quaternions):
+        se3 = mink.SE3.from_rotation_and_translation(rotation=mink.SO3(wxyz=quaternion), translation=pos)
+        se3_trajectory.append(se3)
+    return se3_trajectory, actual_dt
+
+
+def get_target_pose():
+    target_pos = np.array([0.35, 0, 0.2])
+    R_target = np.array([
+        [1, 0, 0],  # X 轴：世界 X
+        [0, -1, 0],  # Y 轴：世界 -Y（保持右手系）
+        [0, 0, -1]  # Z 轴：世界 -Z（朝下）
+    ])
+    target_pose = mink.SE3.from_rotation_and_translation(
+        rotation=mink.SO3.from_matrix(R_target),
+        translation=target_pos
+
+    )
+    return target_pose
+
+
+def setup_mink(model):
+    configuration = mink.Configuration(model)
+    max_velocities = {
+        "shoulder_pan": np.pi,
+        "shoulder_lift": np.pi,
+        "elbow": np.pi,
+        "wrist_1": np.pi,
+        "wrist_2": np.pi,
+        "wrist_3": np.pi,
+    }
+
+    tasks = [
+        end_effector_task := mink.FrameTask(
+            frame_name="attachment_site",
+            frame_type="site",
+            position_cost=1.0,
+            orientation_cost=1.0,
+            lm_damping=1e-3,
+        ),
+        posture_task := mink.PostureTask(model, cost=1e-3),
+    ]
+    posture_task.set_target(configuration.q)
+
+    # Enable collision avoidance between (wrist3, floor) and (wrist3, wall).
+    wrist_3_geoms = mink.get_body_geom_ids(model, model.body("wrist_3_link").id)
+    collision_pairs = [
+        (wrist_3_geoms, ["floor"]),
+    ]
+
+    limits = [
+        mink.ConfigurationLimit(model=configuration.model),
+        mink.CollisionAvoidanceLimit(
+            model=configuration.model,
+            geom_pairs=collision_pairs,
+        ),
+    ]
+
+    velocity_limit = mink.VelocityLimit(model, max_velocities)
+    limits.append(velocity_limit)
+    ## =================== ##
+
+    return tasks, limits, configuration
+
+
+if __name__ == "__main__":
+    model = mujoco.MjModel.from_xml_path(xml_path)
+    data = mujoco.MjData(model)
+    keyframe_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_KEY, "home")
+
+    tasks, limits, configuration = setup_mink(model=model)
+    initial_q = np.array([-2.45, -0.817, 1.32, -0.628, 0, -0.754])
+
+    linear_speed = 0.08
+
+    data.qpos[:6] = initial_q
+    mujoco.mj_forward(model, data)
+
+    site_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, "attachment_site")
+    site_pos = data.site_xpos[site_id].copy()
+    site_r = data.site_xmat[site_id].copy().reshape(3, 3)
+
+    se3_trajectories, actual_dt = generate_cartesian_trajectory(start_pos=site_pos, end_pos=end_pose,
+                                                                start_rotation_matrix=site_r, end_rotation_matrix=r_end,
+                                                                linear_speed=linear_speed, control_dt=1 / 60)
+
+    end_effector_task = tasks[0]
+
+    # IK settings.
+    solver = "daqp"
+    pos_threshold = 1e-4
+    ori_threshold = 1e-4
+    max_iters = 20
+
+    # Initialize key_callback function.
+    with mujoco.viewer.launch_passive(
+            model=model,
+            data=data,
+            show_left_ui=True,
+            show_right_ui=True,
+    ) as viewer:
+        # 打开世界坐标的x y z轴
+        viewer.opt.frame = mujoco.mjtFrame.mjFRAME_WORLD
+
+        viewer.opt.frame = mujoco.mjtFrame.mjFRAME_BODY
+
+        mujoco.mjv_defaultFreeCamera(model, viewer.cam)
+        rate = RateLimiter(frequency=60.0, warn=False)
+
+        for se3_trjectory in se3_trajectories:
+            configuration.update(data.qpos)
+            end_effector_task.set_target(se3_trjectory)
+
+            for _ in range(1):
+                vel = mink.solve_ik(configuration, tasks, rate.dt, solver=solver, limits=limits)
+                configuration.integrate_inplace(vel, rate.dt)
+                err = end_effector_task.compute_error(configuration)
+                if np.linalg.norm(err[:3]) < 1e-4 and np.linalg.norm(err[3:]) < 1e-3:
+                    # print(configuration.q)
+                    break
+
+            # 不使用驱动，只是看mink的ik是否准确
+            # data.qpos = configuration.q
+            # mujoco.mj_forward(model,data)
+
+            # 使用驱动，还要看pd控制器是否准确
+            data.ctrl = configuration.q
+            mujoco.mj_step(model, data)
+
+            # 打印mink求解的位置和当前的site实际的位置
+            # pose = configuration.get_transform_frame_to_world("attachment_site", "site")
+            # print("EE XYZ (mink):", pose.translation)
+            # site_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, "attachment_site")
+            # site_pos = data.site_xpos[site_id].copy()
+            # print('the site pos is '+ str(site_pos))
+            viewer.sync()
+            rate.sleep()
