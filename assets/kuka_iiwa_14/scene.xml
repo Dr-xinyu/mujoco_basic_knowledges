@@ -1,7 +1,54 @@
 <mujoco model="iiwa14 scene">
+  <compiler angle="radian" meshdir="assets" autolimits="true"/>
+  <option integrator="implicitfast"/>
 
-  <include file="iiwa14_left.xml" prefix="l_"/>
-  <include file="iiwa14_right.xml" prefix="r_"/>
+  <default>
+    <default class="iiwa">
+      <material specular="0.5" shininess="0.25"/>
+      <joint axis="0 0 1"/>
+      <general gaintype="fixed" biastype="affine" gainprm="2000" biasprm="0 -2000 -200"/>
+      <default class="joint1">
+        <joint range="-2.96706 2.96706"/>
+        <general ctrlrange="-2.96706 2.96706"/>
+        <default class="joint2">
+          <joint range="-2.0944 2.0944"/>
+          <general ctrlrange="-2.0944 2.0944"/>
+        </default>
+      </default>
+      <default class="joint3">
+        <joint range="-3.05433 3.05433"/>
+        <general ctrlrange="-3.05433 3.05433"/>
+      </default>
+      <default class="visual">
+        <geom type="mesh" contype="0" conaffinity="0" group="2" material="gray"/>
+      </default>
+      <default class="collision">
+        <geom group="3"/>
+      </default>
+      <site size="0.001" rgba="1 0 0 1" group="4"/>
+    </default>
+  </default>
+
+  <asset>
+    <material class="iiwa" name="gray" rgba="0.4 0.4 0.4 1"/>
+    <material class="iiwa" name="light_gray" rgba="0.6 0.6 0.6 1"/>
+    <material class="iiwa" name="black" rgba="0 0 0 1"/>
+    <material class="iiwa" name="orange" rgba="1 0.423529 0.0392157 1"/>
+
+    <mesh file="link_0.obj"/>
+    <mesh file="link_1.obj"/>
+    <mesh file="link_2_orange.obj"/>
+    <mesh file="link_2_grey.obj"/>
+    <mesh file="link_3.obj"/>
+    <mesh file="band.obj"/>
+    <mesh file="kuka.obj"/>
+    <mesh file="link_4_orange.obj"/>
+    <mesh file="link_4_grey.obj"/>
+    <mesh file="link_5.obj"/>
+    <mesh file="link_6_orange.obj"/>
+    <mesh file="link_6_grey.obj"/>
+    <mesh file="link_7.obj"/>
+  </asset>
 
   <statistic center="0.3 0 0.4" extent="0.8" meansize="0.08"/>
 
@@ -19,8 +66,50 @@
   <worldbody>
     <light pos="0 0 1.5" directional="true"/>
     <geom name="floor" size="1 1 0.01" type="plane" material="grid"/>
-<!--    <body name="target" pos="0.5 0 .5" quat="0 1 0 0" mocap="true">-->
-<!--      <geom type="box" size=".05 .05 .05" contype="0" conaffinity="0" rgba=".6 .3 .3 .2"/>-->
-<!--    </body>-->
   </worldbody>
+
+  <include file="iiwa14_left.xml"/>
+
+<!--  </include>-->
+  <include file="iiwa14_right.xml"/>
+
+  <actuator>
+    <!-- 左臂执行器 -->
+    <general name="left_actuator1" joint="left_joint1" class="joint1"/>
+    <general name="left_actuator2" joint="left_joint2" class="joint2"/>
+    <general name="left_actuator3" joint="left_joint3" class="joint1"/>
+    <general name="left_actuator4" joint="left_joint4" class="joint2"/>
+    <general name="left_actuator5" joint="left_joint5" class="joint1"/>
+    <general name="left_actuator6" joint="left_joint6" class="joint2"/>
+    <general name="left_actuator7" joint="left_joint7" class="joint3"/>
+
+    <!-- 右臂执行器 -->
+    <general name="right_actuator1" joint="right_joint1" class="joint1"/>
+    <general name="right_actuator2" joint="right_joint2" class="joint2"/>
+    <general name="right_actuator3" joint="right_joint3" class="joint1"/>
+    <general name="right_actuator4" joint="right_joint4" class="joint2"/>
+    <general name="right_actuator5" joint="right_joint5" class="joint1"/>
+    <general name="right_actuator6" joint="right_joint6" class="joint2"/>
+    <general name="right_actuator7" joint="right_joint7" class="joint3"/>
+  </actuator>
+
+  <contact>
+        <!-- Left arm internal excludes -->
+    <exclude body1="left_base"    body2="left_link1"/>
+    <exclude body1="left_base"    body2="left_link2"/>
+    <exclude body1="left_base"    body2="left_link3"/>
+    <exclude body1="left_link1"   body2="left_link3"/>
+    <exclude body1="left_link3"   body2="left_link5"/>
+    <exclude body1="left_link4"   body2="left_link7"/>
+    <exclude body1="left_link5"   body2="left_link7"/>
+
+    <!-- Right arm internal excludes -->
+    <exclude body1="right_base"   body2="right_link1"/>
+    <exclude body1="right_base"   body2="right_link2"/>
+    <exclude body1="right_base"   body2="right_link3"/>
+    <exclude body1="right_link1"  body2="right_link3"/>
+    <exclude body1="right_link3"  body2="right_link5"/>
+    <exclude body1="right_link4"  body2="right_link7"/>
+    <exclude body1="right_link5"  body2="right_link7"/>
+  </contact>
 </mujoco>

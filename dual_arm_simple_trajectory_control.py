@@ -8,42 +8,7 @@ from loop_rate_limiters import RateLimiter
 import mink
 from scipy.spatial.transform import Rotation as R, Slerp
 
-xml_path = "assets/kuka_iiwa_14/iiwa14.xml"
 scene_path = "assets/kuka_iiwa_14/scene.xml"
-
-
-# def construct_dual_arm_model() -> mujoco.MjModel:
-#     root = mujoco.MjSpec()
-#     root.stat.meansize = 0.08
-#     root.stat.extent = 1.0
-#     root.stat.center = (0, 0, 0.5)
-#     root.visual.global_.azimuth = -180
-#     root.visual.global_.elevation = -20
-#
-#     root.worldbody.add_light(pos=(0, 0, 1.5), directional=True)
-#
-#     origin_site = root.worldbody.add_site(pos=[0, 0, 0], group=6)
-#     scene_spec = mujoco.MjSpec.from_file(scene_path)
-#     root.attach(scene_spec, site=origin_site)
-#
-#     left_site = root.worldbody.add_site(name="l_attachment_site", pos=[0, 0.5, 0], group=5)
-#     right_site = root.worldbody.add_site(name="r_attachment_site", pos=[0, -0.5, 0], group=5)
-#
-#     left_iiwa = mujoco.MjSpec.from_file(xml_path)
-#     left_iiwa.modelname = "l_iiwa"
-#     left_iiwa.key("home").delete()
-#     for i in range(len(left_iiwa.geoms)):
-#         left_iiwa.geoms[i].name = f"geom_{i}"
-#     root.attach(left_iiwa, site=left_site, prefix="l_iiwa/")
-#
-#     right_iiwa = mujoco.MjSpec.from_file(xml_path)
-#     right_iiwa.modelname = "r_iiwa"
-#     right_iiwa.key("home").delete()
-#     for i in range(len(right_iiwa.geoms)):
-#         right_iiwa.geoms[i].name = f"geom_{i}"
-#     root.attach(right_iiwa, site=right_site, prefix="r_iiwa/")
-#
-#     return root.compile()
 
 
 def mirror_iiwa_joints(q_left: np.ndarray) -> np.ndarray:
@@ -102,16 +67,18 @@ def generate_cartesian_trajectory(start_pos, end_pos,
 
 
 if __name__ == "__main__":
-    model = construct_dual_arm_model()
+    model = mujoco.MjModel.from_xml_path(scene_path)
 
     configuration = mink.Configuration(model)
+    l_site = "left_attachment_site"
+    r_site = "right_attachment_site"
 
-    site_point_names = ["l_iiwa/attachment_site", "r_iiwa/attachment_site"]
+    site_point_names = [l_site, r_site]
     left_init_q = np.array([-0.186, 0.817, -0.1, -0.942, -1.1, -0.984, -0.428])
     right_init_q = mirror_iiwa_joints(left_init_q)
 
-    right_target_position = np.array([0.5, -0.7, 0.4])
-    left_target_position = np.array([0.5, 0.7, 0.4])
+    right_target_position = np.array([0.4, -0.2, 0.3])
+    left_target_position = np.array([0.4, 0.2, 0.3])
 
     target_positions = [left_target_position, right_target_position]
 
@@ -127,7 +94,6 @@ if __name__ == "__main__":
     ])
 
     target_rotations = [left_final_rotation, right_final_rotation]
-    # model = mujoco.MjModel.from_xml_path(xml_path)
 
     data = mujoco.MjData(model)
 
@@ -135,8 +101,6 @@ if __name__ == "__main__":
     data.qpos[:7] = right_init_q
     data.qpos[7:14] = left_init_q
     mujoco.mj_forward(model, data)
-
-    # mujoco.viewer.launch(model, data)
 
     start_positions = []
     start_rotations = []
@@ -147,7 +111,7 @@ if __name__ == "__main__":
         start_positions.append(site_pos)
         start_rotations.append(site_r)
 
-    linear_speed = 0.3
+    linear_speed = 0.5
 
     se3_all_arms_trajectories = []
     for i in range(len(site_point_names)):
@@ -158,19 +122,19 @@ if __name__ == "__main__":
         print("the start position is" + str(start_position))
         se3_trajectories, actual_dt = generate_cartesian_trajectory(start_pos=start_position, end_pos=end_position,
                                                                     start_rotation_matrix=start_rotation,
-                                                                    end_rotation_matrix=start_rotation,
+                                                                    end_rotation_matrix=end_rotation,
                                                                     linear_speed=linear_speed, control_dt=1 / 60)
         se3_all_arms_trajectories.append(se3_trajectories)
 
     tasks = [
         left_ee_task := mink.FrameTask(
-            frame_name="l_iiwa/attachment_site",
+            frame_name=l_site,
             frame_type="site",
             position_cost=2.0,
             orientation_cost=1.0,
         ),
         right_ee_task := mink.FrameTask(
-            frame_name="r_iiwa/attachment_site",
+            frame_name=r_site,
             frame_type="site",
             position_cost=2.0,
             orientation_cost=1.0,
@@ -180,20 +144,20 @@ if __name__ == "__main__":
     posture_task.set_target(configuration.q)
 
     max_velocities = {
-        "l_iiwa/joint1": np.pi,
-        "l_iiwa/joint2": np.pi,
-        "l_iiwa/joint3": np.pi,
-        "l_iiwa/joint4": np.pi,
-        "l_iiwa/joint5": np.pi,
-        "l_iiwa/joint6": np.pi,
-        "l_iiwa/joint7": np.pi,
-        "r_iiwa/joint1": np.pi,
-        "r_iiwa/joint2": np.pi,
-        "r_iiwa/joint3": np.pi,
-        "r_iiwa/joint4": np.pi,
-        "r_iiwa/joint5": np.pi,
-        "r_iiwa/joint6": np.pi,
-        "r_iiwa/joint7": np.pi,
+        "left_joint1": np.pi,
+        "left_joint2": np.pi,
+        "left_joint3": np.pi,
+        "left_joint4": np.pi,
+        "left_joint5": np.pi,
+        "left_joint6": np.pi,
+        "left_joint7": np.pi,
+        "right_joint1": np.pi,
+        "right_joint2": np.pi,
+        "right_joint3": np.pi,
+        "right_joint4": np.pi,
+        "right_joint5": np.pi,
+        "right_joint6": np.pi,
+        "right_joint7": np.pi,
     }
 
     limits = [
@@ -222,8 +186,8 @@ if __name__ == "__main__":
             left_ee_task.set_target(se3_left_trajectory)
             right_ee_task.set_target(se3_right_trajectory)
 
-            reached = 0
-            while reached < 3:
+            reached = False
+            while not reached:
                 configuration.update(data.qpos)
                 vel = mink.solve_ik(
                     configuration, tasks, rate.dt, solver, 1e-3, limits=limits
@@ -232,13 +196,27 @@ if __name__ == "__main__":
 
                 err1 = left_ee_task.compute_error(configuration)
                 err2 = right_ee_task.compute_error(configuration)
-                # if np.linalg.norm(err1[:3]) < 1e-4 and np.linalg.norm(err1[3:]) < 1e-3 \
-                #         and np.linalg.norm(err2[:3]) < 1e-4 and np.linalg.norm(err2[3:] < 1e-3):
-                #     #     # print(configuration.q)
-                #     reached = True
+                if np.linalg.norm(err1[:3]) < 1e-4 and np.linalg.norm(err1[3:]) < 1e-3 \
+                        and np.linalg.norm(err2[:3]) < 1e-4 and np.linalg.norm(err2[3:] < 1e-3):
+                    #     # print(configuration.q)
+                    reached = True
+                    print("reached")
 
                 data.ctrl = configuration.q
                 mujoco.mj_step(model, data)
                 viewer.sync()
-                rate.sleep()
-                reached += 1
+                # rate.sleep()
+
+        flag = 5
+        while 1:
+            if flag > 0:
+                l_site_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, l_site)
+                r_site_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, r_site)
+
+                l_site_pos = data.site_xpos[l_site_id].copy()
+                r_site_pos = data.site_xpos[r_site_id].copy()
+                print('the left site pos is ' + str(l_site_pos))
+                print('the right site pos is ' + str(r_site_pos))
+                flag -= 1
+
+            viewer.sync()
