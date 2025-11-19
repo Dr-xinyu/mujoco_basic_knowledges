@@ -7,7 +7,7 @@ from loop_rate_limiters import RateLimiter
 
 import mink
 
-xml_path = "assets/universal_robots_ur5e/scene.xml"
+xml_path = "assets/kuka_iiwa_14/scene.xml"
 
 
 if __name__ == "__main__":
@@ -15,10 +15,7 @@ if __name__ == "__main__":
     data = mujoco.MjData(model)
     keyframe_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_KEY, "home")
 
+
+
     # Initialize key_callback function.
     mujoco.viewer.launch(model, data)
-
-    # 打印site点 名称
-    for i in range(model.nsite):
-        name = mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_SITE, i)
-        print(f"Site {i}: name='{name}'")

@@ -1,5 +1,7 @@
 <mujoco model="iiwa14 scene">
-<!--  <include file="iiwa14.xml"/>-->
+
+  <include file="iiwa14_left.xml" prefix="l_"/>
+  <include file="iiwa14_right.xml" prefix="r_"/>
 
   <statistic center="0.3 0 0.4" extent="0.8" meansize="0.08"/>
 

@@ -8,13 +8,14 @@ from loop_rate_limiters import RateLimiter
 import mink
 from scipy.spatial.transform import Rotation as R, Slerp
 
-xml_path = "assets/universal_robots_ur5e/scene.xml"
+scene_path = "assets/kuka_iiwa_14/scene.xml"
 
-end_pose = np.array([0.35, 0, 0.6])
-r_end = np.array([
-    [1, 0, 0],  # X 轴：世界 X
-    [0, 0, 1],  # Y 轴：世界 -Y（保持右手系）
-    [0, -1, 0]  # Z 轴：世界 -Z（朝下）
+
+left_target_position = np.array([0.4,0.3,0.4])
+left_final_rotation = np.array([
+    [1, 0, 0],
+    [0, -1, 0],
+    [0, 0, -1]
 ])
 
 
@@ -66,12 +67,13 @@ def generate_cartesian_trajectory(start_pos, end_pos,
 def setup_mink(model):
     configuration = mink.Configuration(model)
     max_velocities = {
-        "shoulder_pan": np.pi,
-        "shoulder_lift": np.pi,
-        "elbow": np.pi,
-        "wrist_1": np.pi,
-        "wrist_2": np.pi,
-        "wrist_3": np.pi,
+        "joint1": np.pi,
+        "joint2": np.pi,
+        "joint3": np.pi,
+        "joint4": np.pi,
+        "joint5": np.pi,
+        "joint6": np.pi,
+        "joint7": np.pi
     }
 
     tasks = [
@@ -87,17 +89,13 @@ def setup_mink(model):
     posture_task.set_target(configuration.q)
 
     # Enable collision avoidance between (wrist3, floor) and (wrist3, wall).
-    wrist_3_geoms = mink.get_body_geom_ids(model, model.body("wrist_3_link").id)
-    collision_pairs = [
-        (wrist_3_geoms, ["floor"]),
-    ]
+    # wrist_3_geoms = mink.get_body_geom_ids(model, model.body("wrist_3_link").id)
+    # collision_pairs = [
+    #     (wrist_3_geoms, ["floor"]),
+    # ]
 
     limits = [
         mink.ConfigurationLimit(model=configuration.model),
-        mink.CollisionAvoidanceLimit(
-            model=configuration.model,
-            geom_pairs=collision_pairs,
-        ),
     ]
 
     velocity_limit = mink.VelocityLimit(model, max_velocities)
@@ -108,24 +106,25 @@ def setup_mink(model):
 
 
 if __name__ == "__main__":
-    model = mujoco.MjModel.from_xml_path(xml_path)
+    model = mujoco.MjModel.from_xml_path(scene_path)
     data = mujoco.MjData(model)
-    keyframe_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_KEY, "home")
+    # keyframe_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_KEY, "home")
 
     tasks, limits, configuration = setup_mink(model=model)
-    initial_q = np.array([-2.45, -0.817, 1.32, -0.628, 0, -0.754])
+    initial_q = np.array([-0.186, 0.817, -0.1, -0.942, -1.1, -0.984, -0.428])
 
     linear_speed = 0.5
 
-    data.qpos[:6] = initial_q
+    data.qpos[:7] = initial_q
+
     mujoco.mj_forward(model, data)
 
     site_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, "attachment_site")
     site_pos = data.site_xpos[site_id].copy()
     site_r = data.site_xmat[site_id].copy().reshape(3, 3)
 
-    se3_trajectories, actual_dt = generate_cartesian_trajectory(start_pos=site_pos, end_pos=end_pose,
-                                                                start_rotation_matrix=site_r, end_rotation_matrix=r_end,
+    se3_trajectories, actual_dt = generate_cartesian_trajectory(start_pos=site_pos, end_pos=left_target_position,
+                                                                start_rotation_matrix=site_r, end_rotation_matrix=left_final_rotation,
                                                                 linear_speed=linear_speed, control_dt=1 / 60)
 
     end_effector_task = tasks[0]
@@ -180,14 +179,15 @@ if __name__ == "__main__":
                 # site_pos = data.site_xpos[site_id].copy()
                 # print('the site pos is '+ str(site_pos))
                 viewer.sync()
-                rate.sleep()
+                # rate.sleep()
 
-        # flag = 5
-        # while 1:
-        #     if flag > 1:
-        #         site_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, "attachment_site")
-        #         site_pos = data.site_xpos[site_id].copy()
-        #         print('the site pos is ' + str(site_pos))
-        #         flag -= 1
-        #         time.sleep(0.002)
-        #     viewer.sync()
+        flag1 = 5
+        while 1:
+            if flag1 > 1:
+                site_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, "attachment_site")
+                site_pos = data.site_xpos[site_id].copy()
+                print('the site pos is ' + str(site_pos))
+                flag1 -= 1
+                time.sleep(0.002)
+            viewer.sync()
+
